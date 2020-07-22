@@ -141,12 +141,15 @@ static const MemMapEntry base_memmap[] = {
     [VIRT_GIC_ITS] =            { 0x08080000, 0x00020000 },
     /* This redistributor space allows up to 2*64kB*123 CPUs */
     [VIRT_GIC_REDIST] =         { 0x080A0000, 0x00F60000 },
-    [VIRT_UART] =               { 0x09000000, 0x00001000 },
+    [VIRT_UART0] =              { 0x09000000, 0x00001000 },
     [VIRT_RTC] =                { 0x09010000, 0x00001000 },
     [VIRT_FW_CFG] =             { 0x09020000, 0x00000018 },
     [VIRT_GPIO] =               { 0x09030000, 0x00001000 },
     [VIRT_SECURE_UART] =        { 0x09040000, 0x00001000 },
     [VIRT_SMMU] =               { 0x09050000, 0x00020000 },
+    [VIRT_UART1] =              { 0x09100000, 0x00001000 },
+    [VIRT_UART2] =              { 0x09110000, 0x00001000 },
+    [VIRT_UART3] =              { 0x09120000, 0x00001000 },
     [VIRT_PCDIMM_ACPI] =        { 0x09070000, MEMORY_HOTPLUG_IO_LEN },
     [VIRT_ACPI_GED] =           { 0x09080000, ACPI_GED_EVT_SEL_LEN },
     [VIRT_MMIO] =               { 0x0a000000, 0x00000200 },
@@ -179,12 +182,15 @@ static MemMapEntry extended_memmap[] = {
 };
 
 static const int a15irqmap[] = {
-    [VIRT_UART] = 1,
+    [VIRT_UART0] = 1,
     [VIRT_RTC] = 2,
     [VIRT_PCIE] = 3, /* ... to 6 */
     [VIRT_GPIO] = 7,
     [VIRT_SECURE_UART] = 8,
     [VIRT_ACPI_GED] = 9,
+    [VIRT_UART1] = 10,
+    [VIRT_UART2] = 11,
+    [VIRT_UART3] = 12,
     [VIRT_MMIO] = 16, /* ...to 16 + NUM_VIRTIO_TRANSPORTS - 1 */
     [VIRT_GIC_V2M] = 48, /* ...to 48 + NUM_GICV2M_SPIS - 1 */
     [VIRT_SMMU] = 74,    /* ...to 74 + NUM_SMMU_IRQS - 1 */
@@ -728,6 +734,10 @@ static void create_uart(const VirtMachineState *vms, int uart,
     hwaddr base = vms->memmap[uart].base;
     hwaddr size = vms->memmap[uart].size;
     int irq = vms->irqmap[uart];
+
+   if(chr == NULL)
+       return;
+
     const char compat[] = "arm,pl011\0arm,primecell";
     const char clocknames[] = "uartclk\0apb_pclk";
     DeviceState *dev = qdev_create(NULL, TYPE_PL011);
@@ -754,8 +764,10 @@ static void create_uart(const VirtMachineState *vms, int uart,
     qemu_fdt_setprop(vms->fdt, nodename, "clock-names",
                          clocknames, sizeof(clocknames));
 
-    if (uart == VIRT_UART) {
+    if (uart == VIRT_UART0) {
         qemu_fdt_setprop_string(vms->fdt, "/chosen", "stdout-path", nodename);
+    } else if (uart == VIRT_UART1 || uart == VIRT_UART2 || uart == VIRT_UART3) {
+        qemu_fdt_setprop_string(vms->fdt, nodename, "status", "disabled");
     } else {
         /* Mark as not usable by the normal world */
         qemu_fdt_setprop_string(vms->fdt, nodename, "status", "disabled");
@@ -1832,11 +1844,14 @@ static void machvirt_init(MachineState *machine)
 
     fdt_add_pmu_nodes(vms);
 
-    create_uart(vms, VIRT_UART, sysmem, serial_hd(0));
+    create_uart(vms, VIRT_UART0, sysmem, serial_hd(0));
+    create_uart(vms, VIRT_UART1, sysmem, serial_hd(1));
+    create_uart(vms, VIRT_UART2, sysmem, serial_hd(2));
+    create_uart(vms, VIRT_UART3, sysmem, serial_hd(3));
 
     if (vms->secure) {
         create_secure_ram(vms, secure_sysmem);
-        create_uart(vms, VIRT_SECURE_UART, secure_sysmem, serial_hd(1));
+        create_uart(vms, VIRT_SECURE_UART, secure_sysmem, serial_hd(4));
     }
 
     vms->highmem_ecam &= vms->highmem && (!firmware_loaded || aarch64);
